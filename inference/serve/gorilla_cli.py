@@ -62,7 +62,7 @@ def load_model(
                 ] = "sequential"  # This is important for not the same VRAM sizes
                 available_gpu_memory = get_gpu_memory(num_gpus)
                 kwargs["max_memory"] = {
-                    i: str(int(available_gpu_memory[i] * 0.85)) + "GiB"
+                    i: f"{int(available_gpu_memory[i] * 0.85)}GiB"
                     for i in range(num_gpus)
                 }
             else:
@@ -77,9 +77,9 @@ def load_model(
         from transformers import BitsAndBytesConfig
 
         if "max_memory" in kwargs:
-            kwargs["max_memory"]["cpu"] = (
-                str(math.floor(psutil.virtual_memory().available / 2**20)) + "Mib"
-            )
+            kwargs["max_memory"][
+                "cpu"
+            ] = f"{str(math.floor(psutil.virtual_memory().available / 2**20))}Mib"
         kwargs["quantization_config"] = BitsAndBytesConfig(
             load_in_8bit_fp32_cpu_offload=cpu_offloading
         )
@@ -93,7 +93,7 @@ def load_model(
             return load_compress_model(
                 model_path=model_path, device=device, torch_dtype=kwargs["torch_dtype"]
             )
-  
+
     tokenizer = AutoTokenizer.from_pretrained(model_path)
     model = AutoModelForCausalLM.from_pretrained(
         model_path,
@@ -135,34 +135,27 @@ def get_response(prompt, model, tokenizer, device):
     max_src_len = context_len - max_new_tokens - 8
     input_ids = input_ids[-max_src_len:]
     stop_token_ids = [tokenizer.eos_token_id]
-    
+
     past_key_values = out = None
     for i in range(max_new_tokens):
         if i == 0:
             out = model(torch.as_tensor([input_ids], device=device),
                 use_cache=True)
-            logits = out.logits
-            past_key_values = out.past_key_values
         else:
             out = model(
                 input_ids=torch.as_tensor([[token]], device=device),
                 use_cache=True,
                 past_key_values=past_key_values,
             )
-            logits = out.logits
-            past_key_values = out.past_key_values
-
+        past_key_values = out.past_key_values
+        logits = out.logits
         tmp_output_ids = None
         last_token_logits = logits_processor(tmp_output_ids, logits[:, -1, :])[0]
         probs = torch.softmax(last_token_logits, dim=-1)
         token = int(torch.multinomial(probs, num_samples=1))
         output_ids.append(token)
 
-        if token in stop_token_ids:
-            stopped = True
-        else:
-            stopped = False
-
+        stopped = token in stop_token_ids
         if i % stream_interval == 0 or i == max_new_tokens - 1 or stopped:
             tmp_output_ids = output_ids[input_echo_len:]
             rfind_start = 0

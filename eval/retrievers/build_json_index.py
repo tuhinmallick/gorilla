@@ -32,14 +32,12 @@ class JSONLReader(abc.ABC):
         """Load data from the input file."""
         data = []
         with open(input_file, "r") as f:
-            for line in f:
-                data.append(str(json.loads(line)))
+            data.extend(str(json.loads(line)) for line in f)
         if self.levels_back is None:
             return [Document(page_content=_data) for _data in data]
-        elif self.levels_back is not None:
-            lines = [
-                *_depth_first_yield(
-                    data, self.levels_back, self.collapse_length, []
-                )
-            ]
-            return [Document(page_content="\n".join(lines))]
+        lines = [
+            *_depth_first_yield(
+                data, self.levels_back, self.collapse_length, []
+            )
+        ]
+        return [Document(page_content="\n".join(lines))]

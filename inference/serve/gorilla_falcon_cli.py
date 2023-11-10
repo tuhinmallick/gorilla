@@ -55,7 +55,7 @@ def load_model(
                 ] = "sequential"  # This is important for not the same VRAM sizes
                 available_gpu_memory = get_gpu_memory(num_gpus)
                 kwargs["max_memory"] = {
-                    i: str(int(available_gpu_memory[i] * 0.85)) + "GiB"
+                    i: f"{int(available_gpu_memory[i] * 0.85)}GiB"
                     for i in range(num_gpus)
                 }
             else:
@@ -68,9 +68,9 @@ def load_model(
         from transformers import BitsAndBytesConfig
 
         if "max_memory" in kwargs:
-            kwargs["max_memory"]["cpu"] = (
-                str(math.floor(psutil.virtual_memory().available / 2**20)) + "Mib"
-            )
+            kwargs["max_memory"][
+                "cpu"
+            ] = f"{str(math.floor(psutil.virtual_memory().available / 2**20))}Mib"
         kwargs["quantization_config"] = BitsAndBytesConfig(
             load_in_8bit_fp32_cpu_offload=cpu_offloading
         )
@@ -84,7 +84,7 @@ def load_model(
             return load_compress_model(
                 model_path=model_path, device=device, torch_dtype=kwargs["torch_dtype"]
             )
-  
+
     tokenizer = AutoTokenizer.from_pretrained(model_path)
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.pad_token_id = 11

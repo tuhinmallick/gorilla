@@ -13,8 +13,6 @@ match command.split():
     case ["go", direction]:
     # ^ keyword
         current_room = current_room.neighbor(direction)
-    # The rest of your commands go here
-
 match command.split():
 # ^ keyword
     case ["drop", *objects]:
@@ -50,5 +48,4 @@ x, match: str = 2, "hey, what's up?"
 #   ^ variable
 
 if match := re.fullmatch(r"(-)?(\d+:)?\d?\d:\d\d(\.\d*)?", time, flags=re.ASCII):
-    # ^ variable
-    return match
+    pass

@@ -20,12 +20,11 @@ import concurrent.futures
 
 # Get all the subtrees given a root_node
 def get_all_sub_trees(root_node):
-    node_stack = []
     sub_tree_sexp_list = []
     depth = 1
     text = root_node.text
-    node_stack.append([root_node, depth])
-    while len(node_stack) != 0:
+    node_stack = [[root_node, depth]]
+    while node_stack:
         cur_node, cur_depth = node_stack.pop()
         if cur_node.child_count > 0:
             sub_tree_sexp_list.append(
@@ -46,19 +45,19 @@ def ast_parse(candidate, lang="python"):
     parser = Parser()
     parser.set_language(LANGUAGE)
 
-    candidate_tree = parser.parse(bytes(candidate, "utf8")).root_node
-    return candidate_tree
+    return parser.parse(bytes(candidate, "utf8")).root_node
 
 
 # Get all the arguments in the ast tree
 def get_args(node):
     if node.child_count == 0:
         return []
-    args_list = []
-    for child in node.children[0].children[0].children[1].children:
-        if "repo_or_dir" in child.text.decode() or "model" in child.text.decode():
-            args_list.append(child.children[2].text)
-    return args_list
+    return [
+        child.children[2].text
+        for child in node.children[0].children[0].children[1].children
+        if "repo_or_dir" in child.text.decode()
+        or "model" in child.text.decode()
+    ]
 
 
 # Check if there is an api match
@@ -75,11 +74,11 @@ def ast_check(candidate_subtree_list, base_tree_list):
         args_list = get_args(base_tree)
         if len(args_list) == 0:
             continue
-        ast_match = True
-        for arg in args_list:
-            if arg.decode().lstrip("'").rstrip("'") not in candidate_tree.text.decode():
-                ast_match = False
-                break
+        ast_match = all(
+            arg.decode().lstrip("'").rstrip("'")
+            in candidate_tree.text.decode()
+            for arg in args_list
+        )
         if ast_match:
             return idx
     return -1
@@ -90,28 +89,20 @@ def parse_dataset(args):
     # Read the api dataset
     api_database = []
     with open(args.api_dataset, "r") as f:
-        for line in f:
-            api_database.append(json.loads(line))
-
+        api_database.extend(json.loads(line) for line in f)
     # Read the question answer pair dataset
     qa_pairs = []
     with open(args.apibench, "r") as f:
-        for line in f:
-            qa_pairs.append(json.loads(line)["api_data"])
-
+        qa_pairs.extend(json.loads(line)["api_data"] for line in f)
     # Read the language model response dataset
     llm_responses = []
     with open(args.llm_responses, "r") as f:
-        for line in f:
-            llm_responses.append(json.loads(line))
-
+        llm_responses.extend(json.loads(line) for line in f)
     # Parse all APIs to AST trees
     ast_database = []
     with concurrent.futures.ThreadPoolExecutor() as executor:
         ast_trees = executor.map(ast_parse, (data["api_call"] for data in api_database))
-        for ast_tree in ast_trees:
-            ast_database.append(ast_tree)
-
+        ast_database.extend(iter(ast_trees))
     return api_database, qa_pairs, llm_responses, ast_database
 
 
@@ -127,17 +118,10 @@ def process_response(response, api_database, qa_pairs, ast_database):
     output = output.split("api_call")
     if len(output) == 1:
         return False, False
-    else:
-        output = output[1].split("api_provider")[0]
-        if ":" not in output:
-            start = 0
-        else:
-            start = output.index(":")
-        if ")" not in output:
-            end = -2
-        else:
-            end = output.rindex(")")
-        api_call = output[start + 2 : end + 1]
+    output = output[1].split("api_provider")[0]
+    start = 0 if ":" not in output else output.index(":")
+    end = -2 if ")" not in output else output.rindex(")")
+    api_call = output[start + 2 : end + 1]
 
     # Parse the api_call into AST tree
     ast_tree = ast_parse(api_call)

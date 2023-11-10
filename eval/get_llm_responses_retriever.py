@@ -26,7 +26,6 @@ from retrievers.build_json_index import JSONLReader
 def encode_question(question, api_name):
     """Encode multiple prompt instructions into a single string."""
     
-    prompts = []
     if api_name == "torchhub":
         domains = "1. $DOMAIN is inferred from the task description and should include one of {Classification, Semantic Segmentation, Object Detection, Audio Separation, Video Classification, Text-to-Speech}."
     elif api_name == "huggingface":
@@ -46,9 +45,13 @@ def encode_question(question, api_name):
         print("Error: API name is not supported.")
 
     prompt = question + "\nWrite a python program in 1 to 2 lines to call API in " + api_name + ".\n\nThe answer should follow the format: <<<domain>>> $DOMAIN, <<<api_call>>>: $API_CALL, <<<api_provider>>>: $API_PROVIDER, <<<explanation>>>: $EXPLANATION, <<<code>>>: $CODE}. Here are the requirements:\n" + domains + "\n2. The $API_CALL should have only 1 line of code that calls api.\n3. The $API_PROVIDER should be the programming framework used.\n4. $EXPLANATION should be a step-by-step explanation.\n5. The $CODE is the python code.\n6. Do not repeat the format in your answer."
-    prompts.append({"role": "system", "content": "You are a helpful API writer who can write APIs based on requirements."})
-    prompts.append({"role": "user", "content": prompt})
-    return prompts
+    return [
+        {
+            "role": "system",
+            "content": "You are a helpful API writer who can write APIs based on requirements.",
+        },
+        {"role": "user", "content": prompt},
+    ]
 
 def get_response(get_response_input, api_key):
     question, question_id, api_name, model, retrieved_doc = get_response_input
@@ -88,8 +91,9 @@ def get_response(get_response_input, api_key):
 def process_entry(entry, api_key):
     question, question_id, api_name, model, retriever = entry
     retrieved_doc = retriever.get_relevant_documents(question)
-    result = get_response((question, question_id, api_name, model, retrieved_doc), api_key)
-    return result
+    return get_response(
+        (question, question_id, api_name, model, retrieved_doc), api_key
+    )
 
 def write_result_to_file(result, output_file):
     global file_write_lock
@@ -117,22 +121,21 @@ if __name__ == '__main__':
     assert args.retriever in ["bm25", "gpt"]
     if args.retriever == "gpt":
         retriever = GPTRetriever(query_kwargs={"similarity_top_k": args.num_doc})
-        if os.path.exists(args.retriever + '_dataset_index.json'):
+        if os.path.exists(f'{args.retriever}_dataset_index.json'):
             print('data index already saved')
             os.environ["OPENAI_API_KEY"] = args.api_key
-            index = retriever.load_from_disk(args.retriever + '_dataset_index.json')
+            index = retriever.load_from_disk(f'{args.retriever}_dataset_index.json')
         else:
             print('data index being created')
             os.environ["OPENAI_API_KEY"] = args.api_key
             documents = JSONLReader().load_data(args.api_dataset)
             index = retriever.from_documents(documents)
-            retriever.save_to_disk(index, args.retriever + '_dataset_index.json')
+            retriever.save_to_disk(index, f'{args.retriever}_dataset_index.json')
     elif args.retriever == "bm25":
         from rank_bm25 import BM25Okapi
         corpus = []
         with open(args.api_dataset, 'r') as f:
-            for line in f:
-                corpus.append(json.loads(line))
+            corpus.extend(json.loads(line) for line in f)
         tokenized_corpus = [str(doc).split(" ") for doc in corpus]
         bm25 = BM25Okapi(tokenized_corpus)
         retriever = BM25Retriever(index=bm25, corpus=corpus, query_kwargs={"similarity_top_k": args.num_doc})
@@ -144,14 +147,14 @@ if __name__ == '__main__':
     questions = []
     question_ids = []
     with open(args.question_data, 'r') as f:
-        for idx, line in enumerate(f):
+        for line in f:
             questions.append(json.loads(line)["text"])
             question_ids.append(json.loads(line)["question_id"])
 
     file_write_lock = mp.Lock()
     with mp.Pool(1) as pool:
         results = []
-        for idx, (question, question_id) in enumerate(zip(questions, question_ids)):
+        for question, question_id in zip(questions, question_ids):
             result = pool.apply_async(
                 process_entry,
                 args=((question, question_id, args.api_name, args.model, retriever), args.api_key),
