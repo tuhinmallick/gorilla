@@ -281,10 +281,7 @@ def closest_ref_length(references, hyp_len):
     :rtype: int
     """
     ref_lens = (len(reference) for reference in references)
-    closest_ref_len = min(
-        ref_lens, key=lambda ref_len: (abs(ref_len - hyp_len), ref_len)
-    )
-    return closest_ref_len
+    return min(ref_lens, key=lambda ref_len: (abs(ref_len - hyp_len), ref_len))
 
 
 def brevity_penalty(closest_ref_len, hyp_len):
@@ -425,13 +422,7 @@ class SmoothingFunction:
             if p_i[0] != 0:
                 p_n_new.append(p_i)
             else:
-                _msg = str(
-                    "\nThe hypothesis contains 0 counts of {}-gram overlaps.\n"
-                    "Therefore the BLEU score evaluates to 0, independently of\n"
-                    "how many N-gram overlaps of lower order it contains.\n"
-                    "Consider using lower n-gram order or use "
-                    "SmoothingFunction()"
-                ).format(i + 1)
+                _msg = f"\nThe hypothesis contains 0 counts of {i + 1}-gram overlaps.\nTherefore the BLEU score evaluates to 0, independently of\nhow many N-gram overlaps of lower order it contains.\nConsider using lower n-gram order or use SmoothingFunction()"
                 warnings.warn(_msg)
                 # When numerator==0 where denonminator==0 or !=0, the result
                 # for the precision score should be equal to 0 or undefined.
@@ -511,10 +502,9 @@ class SmoothingFunction:
         matched counts.
         """
         hyp_len = hyp_len if hyp_len else len(hypothesis)
-        m = {}
         # Requires an precision value for an addition ngram order.
         p_n_plus1 = p_n + [modified_precision(references, hypothesis, 5)]
-        m[-1] = p_n[0] + 1
+        m = {-1: p_n[0] + 1}
         for i, p_i in enumerate(p_n):
             p_n[i] = (m[i - 1] + p_i + p_n_plus1[i + 1]) / 3
             m[i] = p_n[i]
@@ -535,16 +525,15 @@ class SmoothingFunction:
         # to use this smoothing technique.
         assert p_n[2], "This smoothing method requires non-zero precision for bigrams."
         for i, p_i in enumerate(p_n):
-            if i in [0, 1]:  # Skips the first 2 orders of ngrams.
+            if i in [0, 1]:
                 continue
-            else:
-                pi0 = 0 if p_n[i - 2] == 0 else p_n[i - 1] ** 2 / p_n[i - 2]
-                # No. of ngrams in translation that matches the reference.
-                m = p_i.numerator
-                # No. of ngrams in translation.
-                l = sum(1 for _ in ngrams(hypothesis, i + 1))
-                # Calculates the interpolated precision.
-                p_n[i] = (m + self.alpha * pi0) / (l + self.alpha)
+            pi0 = 0 if p_n[i - 2] == 0 else p_n[i - 1] ** 2 / p_n[i - 2]
+            # No. of ngrams in translation that matches the reference.
+            m = p_i.numerator
+            # No. of ngrams in translation.
+            l = sum(1 for _ in ngrams(hypothesis, i + 1))
+            # Calculates the interpolated precision.
+            p_n[i] = (m + self.alpha * pi0) / (l + self.alpha)
         return p_n
 
     def method7(self, p_n, references, hypothesis, hyp_len=None, *args, **kwargs):

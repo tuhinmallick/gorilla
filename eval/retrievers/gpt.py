@@ -45,10 +45,8 @@ class GPTRetriever(BaseRetriever, BaseModel):
         contents = [document.page_content for document in documents]
         embeddings = self.get_embeddings(list_of_text=contents)
         self.index = []
-        for i, (embedding, document) in enumerate(zip(embeddings, documents)):
-            new_node = {}
-            new_node["embedding"] = embedding
-            new_node["text"] = document.page_content
+        for embedding, document in zip(embeddings, documents):
+            new_node = {"embedding": embedding, "text": document.page_content}
             self.index.append(new_node)
         return self.index
 
@@ -72,13 +70,10 @@ class GPTRetriever(BaseRetriever, BaseModel):
         top_k = logits.argsort()[-self.query_kwargs["similarity_top_k"]:][::-1]
         top_k_docs = [self.index[i]["text"] for i in top_k]
 
-        # parse source nodes
-        docs = []
-        for source_node in top_k_docs:
-            docs.append(
-                Document(page_content=source_node, metadata="")
-            )
-        return docs
+        return [
+            Document(page_content=source_node, metadata="")
+            for source_node in top_k_docs
+        ]
 
     async def aget_relevant_documents(self, query: str) -> List[Document]:
         raise NotImplementedError("LlamaIndexRetriever does not support async")

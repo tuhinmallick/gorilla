@@ -50,10 +50,8 @@ def remove_comments_and_docstrings(source,lang):
     else:
         def replacer(match):
             s = match.group(0)
-            if s.startswith('/'):
-                return " " # note: a space and not an empty string
-            else:
-                return s
+            return " " if s.startswith('/') else s
+
         pattern = re.compile(
             r'//.*?$|/\*.*?\*/|\'(?:\\.|[^\\\'])*\'|"(?:\\.|[^\\"])*"',
             re.DOTALL | re.MULTILINE
@@ -67,11 +65,10 @@ def remove_comments_and_docstrings(source,lang):
 def tree_to_token_index(root_node):
     if (len(root_node.children)==0 or root_node.type in ['string_literal','string','character_literal']) and root_node.type!='comment':
         return [(root_node.start_point,root_node.end_point)]
-    else:
-        code_tokens=[]
-        for child in root_node.children:
-            code_tokens+=tree_to_token_index(child)
-        return code_tokens
+    code_tokens=[]
+    for child in root_node.children:
+        code_tokens+=tree_to_token_index(child)
+    return code_tokens
     
 def tree_to_variable_index(root_node,index_to_code):
     if (len(root_node.children)==0 or root_node.type in ['string_literal','string','character_literal']) and root_node.type!='comment':

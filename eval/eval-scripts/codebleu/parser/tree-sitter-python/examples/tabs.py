@@ -18,7 +18,7 @@ def set_password(args):
 		}
 	})
 	if not args.quiet:
-		print("password stored in config dir: %s" % jupyter_config_dir())
+		print(f"password stored in config dir: {jupyter_config_dir()}")
 
 def main(argv):
 	parser = argparse.ArgumentParser(argv[0])

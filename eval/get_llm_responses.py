@@ -27,7 +27,6 @@ from tenacity import retry, wait_exponential
 def encode_question(question, api_name):
     """Encode multiple prompt instructions into a single string."""
     
-    prompts = []
     if api_name == "torchhub":
         domains = "1. $DOMAIN is inferred from the task description and should include one of {Classification, Semantic Segmentation, Object Detection, Audio Separation, Video Classification, Text-to-Speech}."
     elif api_name == "huggingface":
@@ -47,9 +46,13 @@ def encode_question(question, api_name):
         print("Error: API name is not supported.")
 
     prompt = question + "\nWrite a python program in 1 to 2 lines to call API in " + api_name + ".\n\nThe answer should follow the format: <<<domain>>> $DOMAIN, <<<api_call>>>: $API_CALL, <<<api_provider>>>: $API_PROVIDER, <<<explanation>>>: $EXPLANATION, <<<code>>>: $CODE}. Here are the requirements:\n" + domains + "\n2. The $API_CALL should have only 1 line of code that calls api.\n3. The $API_PROVIDER should be the programming framework used.\n4. $EXPLANATION should be a step-by-step explanation.\n5. The $CODE is the python code.\n6. Do not repeat the format in your answer."
-    prompts.append({"role": "system", "content": "You are a helpful API writer who can write APIs based on requirements."})
-    prompts.append({"role": "user", "content": prompt})
-    return prompts
+    return [
+        {
+            "role": "system",
+            "content": "You are a helpful API writer who can write APIs based on requirements.",
+        },
+        {"role": "user", "content": prompt},
+    ]
 
 @retry(wait=wait_exponential(multiplier=1, min=10, max=120), reraise=True)
 def get_response(get_response_input, api_key):
@@ -130,7 +133,7 @@ if __name__ == '__main__':
     questions = []
     question_ids = []
     with open(args.question_data, 'r') as f:
-        for idx, line in enumerate(f):
+        for line in f:
             questions.append(json.loads(line)["text"])
             question_ids.append(json.loads(line)["question_id"])
 
@@ -141,7 +144,7 @@ if __name__ == '__main__':
     file_write_lock = mp.Lock()
     with mp.Pool(1) as pool:
         results = []
-        for idx, (question, question_id) in enumerate(zip(questions, question_ids)):
+        for question, question_id in zip(questions, question_ids):
             result = pool.apply_async(
                 process_entry,
                 args=((question, question_id, args.api_name, args.model), args.api_key),
@@ -160,7 +163,7 @@ if __name__ == '__main__':
         wandb.summary["elapsed_time_s"] = elapsed_time
         wandb.log({"elapsed_time_s":elapsed_time})
 
-        line_count = 0 
+        line_count = 0
         with open(args.output_file, 'r') as file:
             for i,line in enumerate(file):
                 data = json.loads(line.strip())
@@ -170,15 +173,16 @@ if __name__ == '__main__':
                 if data is not None:
                     tbl.add_data(*list(data.values()))
                     line_count+=1
-        
+
         # Log the Tale to W&B
         wandb.log({"llm_eval_responses": tbl})
         wandb.summary["response_count"] = line_count
 
         # Also log results file as W&B Artifact
         artifact_model_name = re.sub(r'[^a-zA-Z0-9-_.]', '-', args.model)
-        wandb.log_artifact(args.output_file, 
-            name=f"{args.api_name}-{artifact_model_name}-eval-responses", 
-            type=f"eval-responses", 
-            aliases=[f"{line_count}-responses"]
+        wandb.log_artifact(
+            args.output_file,
+            name=f"{args.api_name}-{artifact_model_name}-eval-responses",
+            type="eval-responses",
+            aliases=[f"{line_count}-responses"],
         )

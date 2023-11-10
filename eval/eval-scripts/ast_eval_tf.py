@@ -18,12 +18,11 @@ from tree_sitter import Language, Parser
 
 # Get all the subtrees given a root_node
 def get_all_sub_trees(root_node):
-    node_stack = []
     sub_tree_sexp_list = []
     depth = 1
     text = root_node.text
-    node_stack.append([root_node, depth])
-    while len(node_stack) != 0:
+    node_stack = [[root_node, depth]]
+    while node_stack:
         cur_node, cur_depth = node_stack.pop()
         if cur_node.child_count > 0:
             sub_tree_sexp_list.append([cur_node.sexp(), cur_depth, cur_node, cur_node.children[0].text])
@@ -40,9 +39,8 @@ def ast_parse(candidate, lang='python'):
     LANGUAGE = Language('codebleu/parser/my-languages.so', lang)
     parser = Parser()
     parser.set_language(LANGUAGE)
-    
-    candidate_tree = parser.parse(bytes(candidate,'utf8')).root_node
-    return candidate_tree
+
+    return parser.parse(bytes(candidate,'utf8')).root_node
 
 # Get all the arguments in the ast tree
 def get_args(node):
@@ -52,7 +50,7 @@ def get_args(node):
     for child in node.children[0].children[0].children[1].children:
         if 'model=' in child.text.decode() or 'model =' in child.text.decode():
             args_list.append(child.children[2].text)
-        elif child.text.decode() != "(" and child.text.decode() != ")" and child.text.decode() != ",":
+        elif child.text.decode() not in ["(", ")", ","]:
             args_list.append(child.text)
     return args_list
 
@@ -70,11 +68,11 @@ def ast_check(candidate_subtree_list, base_tree_list):
         args_list = get_args(base_tree)
         if len(args_list) == 0:
             continue
-        ast_match = True
-        for arg in args_list:
-            if arg.decode().lstrip("'").rstrip("'") not in candidate_tree.text.decode():
-                ast_match = False
-                break
+        ast_match = all(
+            arg.decode().lstrip("'").rstrip("'")
+            in candidate_tree.text.decode()
+            for arg in args_list
+        )
         if ast_match:
             return idx
     return -1
@@ -84,21 +82,15 @@ def parse_dataset(args):
     # Read the api datasest
     api_database = []
     with open(args.api_dataset, 'r') as f:
-        for line in f:
-            api_database.append(json.loads(line))
-
+        api_database.extend(json.loads(line) for line in f)
     # Read the question answer pair datasest
     qa_pairs = []
     with open(args.apibench, 'r') as f:
-        for line in f:
-            qa_pairs.append(json.loads(line)["api_data"])
-    
+        qa_pairs.extend(json.loads(line)["api_data"] for line in f)
     # Read the language model response datasest
     llm_responses = []
     with open(args.llm_responses, 'r') as f:
-        for line in f:
-            llm_responses.append(json.loads(line))
-
+        llm_responses.extend(json.loads(line) for line in f)
     # Parse all apis to ast trees
     ast_database = []
     for data in api_database:
@@ -130,14 +122,8 @@ def main(args):
         else:
             # Parse the output
             output = output[1].split("api_provider")[0]
-            if ":" not in output:
-                start = 0
-            else:
-                start = output.index(":")
-            if ")" not in output:
-                end = -2
-            else:
-                end = output.rindex(")")
+            start = 0 if ":" not in output else output.index(":")
+            end = -2 if ")" not in output else output.rindex(")")
             api_call = output[start+2:end+1]
 
 
@@ -156,9 +142,6 @@ def main(args):
         # Check for functionality
         if ref_api_call['domain'] == qa_pairs[response['question_id'] - 1]['domain']:
             total_correct += 1
-        else:
-            pass
-
     print('Final Functionality accuracy: ', total_correct / len(llm_responses))
     print('Final hallucination: ', total_hallucination/len(llm_responses))
 

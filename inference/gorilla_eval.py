@@ -50,7 +50,7 @@ def load_model(
                 ] = "sequential"  # This is important for not the same VRAM sizes
                 available_gpu_memory = get_gpu_memory(num_gpus)
                 kwargs["max_memory"] = {
-                    i: str(int(available_gpu_memory[i] * 0.85)) + "GiB"
+                    i: f"{int(available_gpu_memory[i] * 0.85)}GiB"
                     for i in range(num_gpus)
                 }
             else:
@@ -63,9 +63,9 @@ def load_model(
         from transformers import BitsAndBytesConfig
 
         if "max_memory" in kwargs:
-            kwargs["max_memory"]["cpu"] = (
-                str(math.floor(psutil.virtual_memory().available / 2**20)) + "Mib"
-            )
+            kwargs["max_memory"][
+                "cpu"
+            ] = f"{str(math.floor(psutil.virtual_memory().available / 2**20))}Mib"
         kwargs["quantization_config"] = BitsAndBytesConfig(
             load_in_8bit_fp32_cpu_offload=cpu_offloading
         )
@@ -79,7 +79,7 @@ def load_model(
             return load_compress_model(
                 model_path=model_path, device=device, torch_dtype=kwargs["torch_dtype"]
             )
-  
+
     tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=False)
     model = AutoModelForCausalLM.from_pretrained(
         model_path,
@@ -94,9 +94,7 @@ def get_questions(question_file):
     # Load questions file
     question_jsons = []
     with open(question_file, "r") as ques_file:
-        for line in ques_file:
-            question_jsons.append(line)
-
+        question_jsons.extend(iter(ques_file))
     return question_jsons
 
 def run_eval(args, question_jsons):
@@ -109,11 +107,11 @@ def run_eval(args, question_jsons):
     # model = model.to(args.device)
 
     ans_jsons = []
-    for i, line in enumerate(tqdm(question_jsons)):
+    for line in tqdm(question_jsons):
         ques_json = json.loads(line)
         idx = ques_json["question_id"]
         prompt = ques_json["text"]
-        prompt = "###USER: " + prompt + "###ASSISTANT: "
+        prompt = f"###USER: {prompt}###ASSISTANT: "
         input_ids = tokenizer([prompt]).input_ids
         output_ids = model.generate(
             torch.as_tensor(input_ids).to(args.device),
